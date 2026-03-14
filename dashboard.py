@@ -7,11 +7,21 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 
-def launch_otfs_dashboard(simulation_func):
-    channel_type_var = tk.StringVar(value="Ideal")
-    snr_var = tk.StringVar(value="20")
+def launch_otfs_dashboard(simulation_func, bits_generator):
+    root = tk.Tk()
+    root.title("OTFS TX-RX Comparison Dashboard")
+    root.geometry("1500x920")
 
-    results = simulation_func(channel_type=channel_type_var.get(), snr_db=float(snr_var.get()))
+    channel_type_var = tk.StringVar(master=root, value="Ideal")
+    snr_var = tk.StringVar(master=root, value="20")
+
+    current_bits = bits_generator()
+
+    results = simulation_func(
+        bits=current_bits,
+        channel_type=channel_type_var.get(),
+        snr_db=float(snr_var.get())
+    )
 
     def fmt(arr, precision=3):
         if isinstance(arr, (float, int, np.floating, np.integer)):
@@ -58,13 +68,12 @@ def launch_otfs_dashboard(simulation_func):
 
     comparison_text = build_comparison_text(results)
 
-    root = tk.Tk()
-    root.title("OTFS TX-RX Comparison Dashboard")
-    root.geometry("1500x920")
-
     notebook = ttk.Notebook(root)
     notebook.pack(fill="both", expand=True)
 
+    # =====================================================
+    # TAB 1 - MATHEMATICAL VIEW
+    # =====================================================
     tab1 = ttk.Frame(notebook)
     notebook.add(tab1, text="Mathematical View")
 
@@ -101,6 +110,9 @@ def launch_otfs_dashboard(simulation_func):
     listbox.selection_set(0)
     update_text_view()
 
+    # =====================================================
+    # TAB 2 - VISUAL VIEW
+    # =====================================================
     tab2 = ttk.Frame(notebook)
     notebook.add(tab2, text="Visual View")
 
@@ -149,8 +161,11 @@ def launch_otfs_dashboard(simulation_func):
     )
     metrics_label.pack(side="right", padx=10)
 
-    rerun_button = ttk.Button(top_bar, text="Run")
-    rerun_button.pack(side="right", padx=10)
+    run_button = ttk.Button(top_bar, text="Run")
+    run_button.pack(side="right", padx=10)
+
+    new_bits_button = ttk.Button(top_bar, text="New Random Bits")
+    new_bits_button.pack(side="right", padx=10)
 
     plot_frame = ttk.Frame(tab2)
     plot_frame.pack(fill="both", expand=True)
@@ -264,8 +279,15 @@ def launch_otfs_dashboard(simulation_func):
         fig.tight_layout()
         canvas.draw()
 
+    def refresh_views():
+        nonlocal comparison_text
+        comparison_text = build_comparison_text(results)
+        metrics_label.config(text=f"BER = {results['ber']:.6f} | SER = {results['ser']:.6f}")
+        update_text_view()
+        draw_selected_plot()
+
     def rerun_simulation():
-        nonlocal results, comparison_text
+        nonlocal results
         try:
             snr_db = float(snr_var.get())
         except ValueError:
@@ -273,15 +295,31 @@ def launch_otfs_dashboard(simulation_func):
             snr_db = 20.0
 
         results = simulation_func(
+            bits=current_bits,
             channel_type=channel_type_var.get(),
             snr_db=snr_db
         )
-        comparison_text = build_comparison_text(results)
-        metrics_label.config(text=f"BER = {results['ber']:.6f} | SER = {results['ser']:.6f}")
-        update_text_view()
-        draw_selected_plot()
+        refresh_views()
 
-    rerun_button.config(command=rerun_simulation)
+    def new_random_bits():
+        nonlocal current_bits, results
+        current_bits = bits_generator()
+
+        try:
+            snr_db = float(snr_var.get())
+        except ValueError:
+            snr_var.set("20")
+            snr_db = 20.0
+
+        results = simulation_func(
+            bits=current_bits,
+            channel_type=channel_type_var.get(),
+            snr_db=snr_db
+        )
+        refresh_views()
+
+    run_button.config(command=rerun_simulation)
+    new_bits_button.config(command=new_random_bits)
 
     plot_selector.bind("<<ComboboxSelected>>", draw_selected_plot)
     draw_selected_plot()

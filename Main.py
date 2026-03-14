@@ -9,6 +9,10 @@ bits_per_symbol = 4
 num_bits = M * N * bits_per_symbol
 
 
+def generate_bits():
+    return np.array(random_bit_generator.generate_random_bits(num_bits))
+
+
 def qam16_modulation(bits):
     bit_quads = bits.reshape(-1, 4)
     symbols = []
@@ -45,21 +49,21 @@ def qam16_demodulation(symbols):
     bits_out = []
 
     def level_to_bits_i(x):
-        if x < -2/np.sqrt(10):
+        if x < -2 / np.sqrt(10):
             return [0, 0]
         elif x < 0:
             return [0, 1]
-        elif x < 2/np.sqrt(10):
+        elif x < 2 / np.sqrt(10):
             return [1, 1]
         else:
             return [1, 0]
 
     def level_to_bits_q(y):
-        if y > 2/np.sqrt(10):
+        if y > 2 / np.sqrt(10):
             return [0, 0]
         elif y > 0:
             return [0, 1]
-        elif y > -2/np.sqrt(10):
+        elif y > -2 / np.sqrt(10):
             return [1, 1]
         else:
             return [1, 0]
@@ -72,9 +76,23 @@ def qam16_demodulation(symbols):
     return np.array(bits_out)
 
 
-def run_otfs_simulation():
-    bits = np.array(random_bit_generator.generate_random_bits(num_bits))
+def apply_channel(tx_signal, channel_type="Ideal", snr_db=20.0):
+    if channel_type == "Ideal":
+        return tx_signal.copy()
 
+    if channel_type == "AWGN":
+        signal_power = np.mean(np.abs(tx_signal) ** 2)
+        snr_linear = 10 ** (snr_db / 10)
+        noise_power = signal_power / snr_linear
+        noise = np.sqrt(noise_power / 2) * (
+            np.random.randn(*tx_signal.shape) + 1j * np.random.randn(*tx_signal.shape)
+        )
+        return tx_signal + noise
+
+    raise ValueError(f"Unsupported channel type: {channel_type}")
+
+
+def run_otfs_simulation(bits, channel_type="Ideal", snr_db=20.0):
     bit_groups, mod_symbols = qam16_modulation(bits)
 
     dd_grid = mod_symbols.reshape(M, N)
@@ -91,7 +109,7 @@ def run_otfs_simulation():
     blocks_with_cp = np.array(blocks_with_cp).T
     tx_signal = blocks_with_cp.flatten(order="F")
 
-    rx_signal = tx_signal.copy()
+    rx_signal = apply_channel(tx_signal, channel_type=channel_type, snr_db=snr_db)
 
     rx_blocks_with_cp = rx_signal.reshape(M + cp_len, N, order="F")
     rx_blocks = rx_blocks_with_cp[cp_len:, :]
@@ -100,7 +118,14 @@ def run_otfs_simulation():
 
     rx_symbols = Y_dd.reshape(-1)
     rx_bits = qam16_demodulation(rx_symbols)
+
     ber = np.mean(bits != rx_bits)
+    ser = np.mean(
+        np.any(
+            bits.reshape(-1, bits_per_symbol) != rx_bits.reshape(-1, bits_per_symbol),
+            axis=1
+        )
+    )
 
     return {
         "bits": bits,
@@ -119,8 +144,11 @@ def run_otfs_simulation():
         "rx_symbols": rx_symbols,
         "rx_bits": rx_bits,
         "ber": ber,
+        "ser": ser,
+        "channel_type": channel_type,
+        "snr_db": snr_db,
     }
 
 
 if __name__ == "__main__":
-    launch_otfs_dashboard(run_otfs_simulation)
+    launch_otfs_dashboard(run_otfs_simulation, generate_bits)
