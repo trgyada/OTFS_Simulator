@@ -8,14 +8,17 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 
 def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
+    # Ana pencere.
     root = tk.Tk()
     root.title("OTFS TX-RX Comparison Dashboard")
     root.geometry("1500x920")
 
+    # UI kontrollerinin bagli oldugu degiskenler.
     channel_type_var = tk.StringVar(master=root, value="Ideal")
     snr_var = tk.StringVar(master=root, value="20")
     trials_var = tk.StringVar(master=root, value="50")
 
+    # Ilk acilista bir bit seti ve ilk simulasyon sonucu hazirlanir.
     current_bits = bits_generator()
 
     results = simulation_func(
@@ -27,18 +30,24 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
     sweep_results = None
 
     def fmt(arr, precision=3):
+        # Metin gorunumunde NumPy dizilerini okunur hale getir.
         if isinstance(arr, (float, int, np.floating, np.integer)):
             return str(arr)
         return np.array2string(np.array(arr), precision=precision, suppress_small=False)
 
+    def get_symbol_array(res):
+        # Yeni isim tercih edilir; eski anahtar da geriye donuk desteklenir.
+        return res.get("qam16_symbols", res["qpsk_symbols"])
+
     def build_comparison_text(res):
+        # Sol listede secilecek metinsel karsilastirma bloklari.
         return {
             "Bits Comparison": (
                 "TX Bits\n" + "=" * 50 + "\n" + fmt(res["bits"]) +
                 "\n\nRX Bits\n" + "=" * 50 + "\n" + fmt(res["rx_bits"])
             ),
             "Symbols Comparison": (
-                "TX Symbols\n" + "=" * 50 + "\n" + fmt(res["qpsk_symbols"]) +
+                "TX Symbols\n" + "=" * 50 + "\n" + fmt(get_symbol_array(res)) +
                 "\n\nRX Symbols\n" + "=" * 50 + "\n" + fmt(res["rx_symbols"])
             ),
             "DD Grid Comparison": (
@@ -71,9 +80,13 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
 
     comparison_text = build_comparison_text(results)
 
+    # Sekmeli ana layout.
     notebook = ttk.Notebook(root)
     notebook.pack(fill="both", expand=True)
 
+    # =====================================================
+    # TAB 1 - MATHEMATICAL VIEW
+    # =====================================================
     tab1 = ttk.Frame(notebook)
     notebook.add(tab1, text="Mathematical View")
 
@@ -95,6 +108,7 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
     text_area.pack(fill="both", expand=True)
 
     def update_text_view(event=None):
+        # Sol listede secilen anahtarin metnini saga bas.
         sel = listbox.curselection()
         if not sel:
             return
@@ -110,6 +124,9 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
     listbox.selection_set(0)
     update_text_view()
 
+    # =====================================================
+    # TAB 2 - VISUAL VIEW
+    # =====================================================
     tab2 = ttk.Frame(notebook)
     notebook.add(tab2, text="Visual View")
 
@@ -167,9 +184,6 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
     run_button = ttk.Button(top_bar, text="Run")
     run_button.pack(side="right", padx=10)
 
-    sweep_button = ttk.Button(top_bar, text="Run SNR Sweep")
-    sweep_button.pack(side="right", padx=10)
-
     new_bits_button = ttk.Button(top_bar, text="New Random Bits")
     new_bits_button.pack(side="right", padx=10)
 
@@ -181,6 +195,7 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
     canvas.get_tk_widget().pack(fill="both", expand=True)
 
     def draw_selected_plot(event=None):
+        # Her secimde figuru sifirdan cizerek eski kalintilari temizle.
         fig.clear()
         selected = plot_selector.get()
 
@@ -188,7 +203,7 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
             ax = fig.add_subplot(111)
 
             if sweep_results is None:
-                ax.text(0.5, 0.5, "Run SNR Sweep first", ha="center", va="center")
+                ax.text(0.5, 0.5, "Run on BER/SER vs SNR selection to generate sweep", ha="center", va="center")
                 ax.set_axis_off()
             else:
                 ax.semilogy(sweep_results["snr_db_list"], sweep_results["ber_list"], marker="o", label="BER")
@@ -207,6 +222,7 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
         ax2 = fig.add_subplot(122)
 
         if selected == "Bits Comparison":
+            # TX ve RX bit noktalarini yanyana goster.
             x_tx = np.arange(len(results["bits"]))
             x_rx = np.arange(len(results["rx_bits"]))
 
@@ -221,7 +237,8 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
             ax2.grid(True)
 
         elif selected == "Symbols Comparison":
-            s_tx = results["qpsk_symbols"]
+            # Takimyildizi karsilastirmasi.
+            s_tx = get_symbol_array(results)
             s_rx = results["rx_symbols"]
 
             ax1.scatter(np.real(s_tx) * np.sqrt(10), np.imag(s_tx) * np.sqrt(10), s=80, c="yellow")
@@ -305,29 +322,56 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
         canvas.draw()
 
     def refresh_views():
+        # Simulasyon sonucunu hem metin hem grafik sekmesine yansit.
         nonlocal comparison_text
         comparison_text = build_comparison_text(results)
         metrics_label.config(text=f"BER = {results['ber']:.6f} | SER = {results['ser']:.6f}")
         update_text_view()
         draw_selected_plot()
 
-    def rerun_simulation():
-        nonlocal results
+    def run_action():
+        # "Run" tusunun tum davranislari burada toplanir.
+        nonlocal results, sweep_results
+
+        selected = plot_selector.get()
+
+        if selected == "BER/SER vs SNR":
+            try:
+                trials = int(trials_var.get())
+                if trials <= 0:
+                    raise ValueError
+            except ValueError:
+                trials_var.set("50")
+                trials = 50
+
+            # SNR sweep daha maliyetli oldugu icin sadece bu secimde calisir.
+            sweep_results = snr_sweep_func(
+                channel_type=channel_type_var.get(),
+                snr_db_list=list(range(0, 21, 2)),
+                trials_per_snr=trials
+            )
+            draw_selected_plot()
+            return
+
         try:
             snr_db = float(snr_var.get())
         except ValueError:
             snr_var.set("20")
             snr_db = 20.0
 
+        # Tek bir bit seti ile secilen kanal/SNR altinda yeniden kos.
         results = simulation_func(
             bits=current_bits,
             channel_type=channel_type_var.get(),
             snr_db=snr_db
         )
+
+        sweep_results = None
         refresh_views()
 
     def new_random_bits():
-        nonlocal current_bits, results
+        # "New Random Bits" sadece veri setini degistirir, ayarlar korunur.
+        nonlocal current_bits, results, sweep_results
         current_bits = bits_generator()
 
         try:
@@ -341,27 +385,12 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
             channel_type=channel_type_var.get(),
             snr_db=snr_db
         )
+
+        sweep_results = None
         refresh_views()
 
-    def run_snr_sweep_action():
-        nonlocal sweep_results
-        try:
-            trials = int(trials_var.get())
-        except ValueError:
-            trials_var.set("50")
-            trials = 50
-
-        sweep_results = snr_sweep_func(
-            channel_type=channel_type_var.get(),
-            snr_db_list=list(range(0, 21, 2)),
-            trials_per_snr=trials
-        )
-        plot_selector.set("BER/SER vs SNR")
-        draw_selected_plot()
-
-    run_button.config(command=rerun_simulation)
+    run_button.config(command=run_action)
     new_bits_button.config(command=new_random_bits)
-    sweep_button.config(command=run_snr_sweep_action)
 
     plot_selector.bind("<<ComboboxSelected>>", draw_selected_plot)
     draw_selected_plot()
