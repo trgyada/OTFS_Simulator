@@ -7,13 +7,14 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 
-def launch_otfs_dashboard(simulation_func, bits_generator):
+def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
     root = tk.Tk()
     root.title("OTFS TX-RX Comparison Dashboard")
     root.geometry("1500x920")
 
     channel_type_var = tk.StringVar(master=root, value="Ideal")
     snr_var = tk.StringVar(master=root, value="20")
+    trials_var = tk.StringVar(master=root, value="50")
 
     current_bits = bits_generator()
 
@@ -22,6 +23,8 @@ def launch_otfs_dashboard(simulation_func, bits_generator):
         channel_type=channel_type_var.get(),
         snr_db=float(snr_var.get())
     )
+
+    sweep_results = None
 
     def fmt(arr, precision=3):
         if isinstance(arr, (float, int, np.floating, np.integer)):
@@ -71,9 +74,6 @@ def launch_otfs_dashboard(simulation_func, bits_generator):
     notebook = ttk.Notebook(root)
     notebook.pack(fill="both", expand=True)
 
-    # =====================================================
-    # TAB 1 - MATHEMATICAL VIEW
-    # =====================================================
     tab1 = ttk.Frame(notebook)
     notebook.add(tab1, text="Mathematical View")
 
@@ -110,9 +110,6 @@ def launch_otfs_dashboard(simulation_func, bits_generator):
     listbox.selection_set(0)
     update_text_view()
 
-    # =====================================================
-    # TAB 2 - VISUAL VIEW
-    # =====================================================
     tab2 = ttk.Frame(notebook)
     notebook.add(tab2, text="Visual View")
 
@@ -135,6 +132,11 @@ def launch_otfs_dashboard(simulation_func, bits_generator):
     snr_entry = ttk.Entry(top_bar, width=8, textvariable=snr_var)
     snr_entry.pack(side="left", padx=5)
 
+    ttk.Label(top_bar, text="Sweep Trials:", font=("Arial", 11, "bold")).pack(side="left", padx=5)
+
+    trials_entry = ttk.Entry(top_bar, width=8, textvariable=trials_var)
+    trials_entry.pack(side="left", padx=5)
+
     ttk.Label(top_bar, text="Select Comparison:", font=("Arial", 12, "bold")).pack(side="left", padx=15)
 
     plot_selector = ttk.Combobox(
@@ -147,6 +149,7 @@ def launch_otfs_dashboard(simulation_func, bits_generator):
             "Block Comparison",
             "CP Block Comparison",
             "Signal Comparison",
+            "BER/SER vs SNR",
         ],
         state="readonly",
         width=28,
@@ -164,6 +167,9 @@ def launch_otfs_dashboard(simulation_func, bits_generator):
     run_button = ttk.Button(top_bar, text="Run")
     run_button.pack(side="right", padx=10)
 
+    sweep_button = ttk.Button(top_bar, text="Run SNR Sweep")
+    sweep_button.pack(side="right", padx=10)
+
     new_bits_button = ttk.Button(top_bar, text="New Random Bits")
     new_bits_button.pack(side="right", padx=10)
 
@@ -177,6 +183,25 @@ def launch_otfs_dashboard(simulation_func, bits_generator):
     def draw_selected_plot(event=None):
         fig.clear()
         selected = plot_selector.get()
+
+        if selected == "BER/SER vs SNR":
+            ax = fig.add_subplot(111)
+
+            if sweep_results is None:
+                ax.text(0.5, 0.5, "Run SNR Sweep first", ha="center", va="center")
+                ax.set_axis_off()
+            else:
+                ax.semilogy(sweep_results["snr_db_list"], sweep_results["ber_list"], marker="o", label="BER")
+                ax.semilogy(sweep_results["snr_db_list"], sweep_results["ser_list"], marker="s", label="SER")
+                ax.set_title(f"16-QAM {sweep_results['channel_type']} Channel")
+                ax.set_xlabel("SNR (dB)")
+                ax.set_ylabel("Error Rate")
+                ax.grid(True, which="both")
+                ax.legend()
+
+            fig.tight_layout()
+            canvas.draw()
+            return
 
         ax1 = fig.add_subplot(121)
         ax2 = fig.add_subplot(122)
@@ -318,8 +343,25 @@ def launch_otfs_dashboard(simulation_func, bits_generator):
         )
         refresh_views()
 
+    def run_snr_sweep_action():
+        nonlocal sweep_results
+        try:
+            trials = int(trials_var.get())
+        except ValueError:
+            trials_var.set("50")
+            trials = 50
+
+        sweep_results = snr_sweep_func(
+            channel_type=channel_type_var.get(),
+            snr_db_list=list(range(0, 21, 2)),
+            trials_per_snr=trials
+        )
+        plot_selector.set("BER/SER vs SNR")
+        draw_selected_plot()
+
     run_button.config(command=rerun_simulation)
     new_bits_button.config(command=new_random_bits)
+    sweep_button.config(command=run_snr_sweep_action)
 
     plot_selector.bind("<<ComboboxSelected>>", draw_selected_plot)
     draw_selected_plot()

@@ -150,5 +150,42 @@ def run_otfs_simulation(bits, channel_type="Ideal", snr_db=20.0):
     }
 
 
+def run_snr_sweep(channel_type="AWGN", snr_db_list=None, trials_per_snr=50):
+    if snr_db_list is None:
+        snr_db_list = list(range(0, 21, 2))
+
+    ber_list = []
+    ser_list = []
+
+    for snr_db in snr_db_list:
+        total_bit_errors = 0
+        total_bits = 0
+        total_symbol_errors = 0
+        total_symbols = 0
+
+        for _ in range(trials_per_snr):
+            bits = generate_bits()
+            res = run_otfs_simulation(bits=bits, channel_type=channel_type, snr_db=snr_db)
+
+            total_bit_errors += np.sum(res["bits"] != res["rx_bits"])
+            total_bits += len(res["bits"])
+
+            tx_sym_bits = res["bits"].reshape(-1, bits_per_symbol)
+            rx_sym_bits = res["rx_bits"].reshape(-1, bits_per_symbol)
+            total_symbol_errors += np.sum(np.any(tx_sym_bits != rx_sym_bits, axis=1))
+            total_symbols += tx_sym_bits.shape[0]
+
+        ber_list.append(total_bit_errors / total_bits)
+        ser_list.append(total_symbol_errors / total_symbols)
+
+    return {
+        "snr_db_list": np.array(snr_db_list),
+        "ber_list": np.array(ber_list),
+        "ser_list": np.array(ser_list),
+        "trials_per_snr": trials_per_snr,
+        "channel_type": channel_type,
+    }
+
+
 if __name__ == "__main__":
-    launch_otfs_dashboard(run_otfs_simulation, generate_bits)
+    launch_otfs_dashboard(run_otfs_simulation, generate_bits, run_snr_sweep)
