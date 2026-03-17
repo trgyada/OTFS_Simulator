@@ -1,3 +1,14 @@
+# =============================================================================
+# dashboard.py — OTFS simülasyonu için Tkinter tabanlı interaktif gösterge paneli.
+#
+# Sekmeler:
+#   - Mathematical View : TX/RX verilerinin metin karşılaştırması
+#   - Visual View       : Grafik karşılaştırmaları + BER/SER eğrisi
+#
+# Grafik çizim mantığı dashboard_plots.py modülünde tutulur;
+# bu dosya yalnızca UI kurulumu ve olay yönetimini içerir.
+# =============================================================================
+
 import tkinter as tk
 from tkinter import ttk
 from tkinter.scrolledtext import ScrolledText
@@ -6,19 +17,21 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
+import dashboard_plots as plots
+
 
 def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
-    # Ana pencere.
+    # Ana pencereyi oluştur.
     root = tk.Tk()
     root.title("OTFS TX-RX Comparison Dashboard")
     root.geometry("1500x920")
 
-    # UI kontrollerinin bagli oldugu degiskenler.
+    # UI kontrollerinin bağlı olduğu değişkenler.
     channel_type_var = tk.StringVar(master=root, value="Ideal")
     snr_var = tk.StringVar(master=root, value="20")
     trials_var = tk.StringVar(master=root, value="50")
 
-    # Ilk acilista bir bit seti ve ilk simulasyon sonucu hazirlanir.
+    # İlk açılışta bir bit seti üretilir ve simülasyon sonucu hazırlanır.
     current_bits = bits_generator()
 
     results = simulation_func(
@@ -30,24 +43,21 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
     sweep_results = None
 
     def fmt(arr, precision=3):
-        # Metin gorunumunde NumPy dizilerini okunur hale getir.
+        # NumPy dizilerini okunabilir metin formatına çevir.
         if isinstance(arr, (float, int, np.floating, np.integer)):
             return str(arr)
         return np.array2string(np.array(arr), precision=precision, suppress_small=False)
 
-    def get_symbol_array(res):
-        # Yeni isim tercih edilir; eski anahtar da geriye donuk desteklenir.
-        return res.get("qam16_symbols", res["qpsk_symbols"])
-
     def build_comparison_text(res):
-        # Sol listede secilecek metinsel karsilastirma bloklari.
+        """Sol listede seçilebilecek metin karşılaştırma bloklarını oluştur."""
+        sym_tx = plots.get_symbol_array(res)
         return {
             "Bits Comparison": (
                 "TX Bits\n" + "=" * 50 + "\n" + fmt(res["bits"]) +
                 "\n\nRX Bits\n" + "=" * 50 + "\n" + fmt(res["rx_bits"])
             ),
             "Symbols Comparison": (
-                "TX Symbols\n" + "=" * 50 + "\n" + fmt(get_symbol_array(res)) +
+                "TX Symbols\n" + "=" * 50 + "\n" + fmt(sym_tx) +
                 "\n\nRX Symbols\n" + "=" * 50 + "\n" + fmt(res["rx_symbols"])
             ),
             "DD Grid Comparison": (
@@ -108,7 +118,7 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
     text_area.pack(fill="both", expand=True)
 
     def update_text_view(event=None):
-        # Sol listede secilen anahtarin metnini saga bas.
+        # Sol listede seçilen anahtarın metnini sağ alana yaz.
         sel = listbox.curselection()
         if not sel:
             return
@@ -195,25 +205,13 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
     canvas.get_tk_widget().pack(fill="both", expand=True)
 
     def draw_selected_plot(event=None):
-        # Her secimde figuru sifirdan cizerek eski kalintilari temizle.
+        # Her seçimde figürü sıfırdan çizerek eski kalıntıları temizle.
         fig.clear()
         selected = plot_selector.get()
 
         if selected == "BER/SER vs SNR":
             ax = fig.add_subplot(111)
-
-            if sweep_results is None:
-                ax.text(0.5, 0.5, "Run on BER/SER vs SNR selection to generate sweep", ha="center", va="center")
-                ax.set_axis_off()
-            else:
-                ax.semilogy(sweep_results["snr_db_list"], sweep_results["ber_list"], marker="o", label="BER")
-                ax.semilogy(sweep_results["snr_db_list"], sweep_results["ser_list"], marker="s", label="SER")
-                ax.set_title(f"16-QAM {sweep_results['channel_type']} Channel")
-                ax.set_xlabel("SNR (dB)")
-                ax.set_ylabel("Error Rate")
-                ax.grid(True, which="both")
-                ax.legend()
-
+            plots.draw_ber_ser_sweep(ax, sweep_results)
             fig.tight_layout()
             canvas.draw()
             return
@@ -222,136 +220,25 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
         ax2 = fig.add_subplot(122)
 
         if selected == "Bits Comparison":
-            # TX ve RX bit noktalarini yanyana goster.
-            x_tx = np.arange(len(results["bits"]))
-            x_rx = np.arange(len(results["rx_bits"]))
-
-            ax1.scatter(x_tx, results["bits"], s=35)
-            ax1.set_title("TX Bits")
-            ax1.set_ylim(-0.1, 1.1)
-            ax1.grid(True)
-
-            ax2.scatter(x_rx, results["rx_bits"], s=35)
-            ax2.set_title("RX Bits")
-            ax2.set_ylim(-0.1, 1.1)
-            ax2.grid(True)
-
+            plots.draw_bits_comparison(ax1, ax2, results)
         elif selected == "Symbols Comparison":
-            # Takimyildizi karsilastirmasi.
-            s_tx = get_symbol_array(results)
-            s_rx = results["rx_symbols"]
-
-            ax1.scatter(np.real(s_tx) * np.sqrt(10), np.imag(s_tx) * np.sqrt(10), s=80, c="yellow")
-            ax1.set_title("TX 16-QAM")
-            ax1.set_xlabel("In-Phase")
-            ax1.set_ylabel("Quadrature")
-            ax1.set_facecolor("black")
-            ax1.grid(True, color="gray", alpha=0.3)
-            ax1.tick_params(colors="white")
-            ax1.xaxis.label.set_color("white")
-            ax1.yaxis.label.set_color("white")
-            ax1.title.set_color("white")
-            ax1.set_xlim(-3.5, 3.5)
-            ax1.set_ylim(-3.5, 3.5)
-            ax1.set_aspect("equal", adjustable="box")
-
-            ax2.scatter(np.real(s_rx) * np.sqrt(10), np.imag(s_rx) * np.sqrt(10), s=80, c="yellow")
-            ax2.set_title("RX 16-QAM")
-            ax2.set_xlabel("In-Phase")
-            ax2.set_ylabel("Quadrature")
-            ax2.set_facecolor("black")
-            ax2.grid(True, color="gray", alpha=0.3)
-            ax2.tick_params(colors="white")
-            ax2.xaxis.label.set_color("white")
-            ax2.yaxis.label.set_color("white")
-            ax2.title.set_color("white")
-            ax2.set_xlim(-3.5, 3.5)
-            ax2.set_ylim(-3.5, 3.5)
-            ax2.set_aspect("equal", adjustable="box")
-
+            plots.draw_symbols_comparison(ax1, ax2, results)
         elif selected == "DD Grid Comparison":
-            im1 = ax1.imshow(np.real(results["dd_grid"]), aspect="auto", cmap="coolwarm")
-            ax1.set_title("TX Real(DD Grid)")
-            fig.colorbar(im1, ax=ax1)
-
-            im2 = ax2.imshow(np.real(results["Y_dd"]), aspect="auto", cmap="coolwarm")
-            ax2.set_title("RX Real(Y_dd)")
-            fig.colorbar(im2, ax=ax2)
-
+            plots.draw_dd_grid_comparison(fig, ax1, ax2, results)
         elif selected == "TF Grid Comparison":
-            im1 = ax1.imshow(np.abs(results["X_tf"]), aspect="auto", cmap="viridis")
-            ax1.set_title("TX |X_tf|")
-            fig.colorbar(im1, ax=ax1)
-
-            im2 = ax2.imshow(np.abs(results["Y_tf"]), aspect="auto", cmap="viridis")
-            ax2.set_title("RX |Y_tf|")
-            fig.colorbar(im2, ax=ax2)
-
+            plots.draw_tf_grid_comparison(fig, ax1, ax2, results)
         elif selected == "Block Comparison":
-            im1 = ax1.imshow(np.real(results["x_time_blocks"]), aspect="auto", cmap="coolwarm")
-            ax1.set_title("TX Real(x_time_blocks)")
-            fig.colorbar(im1, ax=ax1)
-
-            im2 = ax2.imshow(np.real(results["rx_blocks"]), aspect="auto", cmap="coolwarm")
-            ax2.set_title("RX Real(rx_blocks)")
-            fig.colorbar(im2, ax=ax2)
-
+            plots.draw_block_comparison(fig, ax1, ax2, results)
         elif selected == "CP Block Comparison":
-            im1 = ax1.imshow(np.real(results["blocks_with_cp"]), aspect="auto", cmap="coolwarm")
-            ax1.set_title("TX Real(blocks_with_cp)")
-            ax1.set_xlabel("Block Index")
-            ax1.set_ylabel("Sample Index")
-            ax1.axhline(y=0.5, color="black", linestyle="--", linewidth=1.5)
-            ax1.text(
-                -0.35, 0, "CP",
-                color="black", fontsize=11, fontweight="bold",
-                va="center", ha="right",
-                bbox=dict(facecolor="white", alpha=0.8, edgecolor="none")
-            )
-            ax1.text(
-                -0.35, 1.5, "Data",
-                color="black", fontsize=11, fontweight="bold",
-                va="center", ha="right",
-                bbox=dict(facecolor="white", alpha=0.8, edgecolor="none")
-            )
-            fig.colorbar(im1, ax=ax1)
-
-            im2 = ax2.imshow(np.real(results["rx_blocks_with_cp"]), aspect="auto", cmap="coolwarm")
-            ax2.set_title("RX Real(rx_blocks_with_cp)")
-            ax2.set_xlabel("Block Index")
-            ax2.set_ylabel("Sample Index")
-            ax2.axhline(y=0.5, color="black", linestyle="--", linewidth=1.5)
-            ax2.text(
-                -0.35, 0, "CP",
-                color="black", fontsize=11, fontweight="bold",
-                va="center", ha="right",
-                bbox=dict(facecolor="white", alpha=0.8, edgecolor="none")
-            )
-            ax2.text(
-                -0.35, 1.5, "Data",
-                color="black", fontsize=11, fontweight="bold",
-                va="center", ha="right",
-                bbox=dict(facecolor="white", alpha=0.8, edgecolor="none")
-            )
-            fig.colorbar(im2, ax=ax2)
-
+            plots.draw_cp_block_comparison(fig, ax1, ax2, results)
         elif selected == "Signal Comparison":
-            ax1.plot(np.real(results["tx_signal"]), label="Real")
-            ax1.plot(np.imag(results["tx_signal"]), label="Imag")
-            ax1.set_title("TX Signal")
-            ax1.legend()
-            ax1.grid(True)
-
-            ax2.plot(np.real(results["rx_signal"]), label="Real")
-            ax2.plot(np.imag(results["rx_signal"]), label="Imag")
-            ax2.set_title("RX Signal")
-            ax2.legend()
-            ax2.grid(True)
+            plots.draw_signal_comparison(ax1, ax2, results)
 
         fig.tight_layout()
         canvas.draw()
 
     def refresh_views():
+        """Metin görünümü ve grafikleri mevcut sonuçlara göre yenile."""
         nonlocal comparison_text
         comparison_text = build_comparison_text(results)
         metrics_label.config(
@@ -361,6 +248,7 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
         draw_selected_plot()
 
     def run_action():
+        """Run düğmesine basıldığında simülasyonu (ve gerekirse SNR sweep'i) çalıştır."""
         nonlocal results, sweep_results
 
         try:
@@ -369,7 +257,7 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
             snr_var.set("20")
             snr_db = 20.0
 
-        # Her zaman önce tek koşu çalışsın
+        # Her zaman önce tek çerçeve simülasyonu çalıştır.
         results = simulation_func(
             bits=current_bits,
             channel_type=channel_type_var.get(),
@@ -378,7 +266,7 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
 
         selected = plot_selector.get()
 
-        # Eğer sweep ekranındaysan ek olarak sweep de çalıştır
+        # BER/SER vs SNR ekranındaysa ek olarak SNR sweep de çalıştır.
         if selected == "BER/SER vs SNR":
             try:
                 trials = int(trials_var.get())
@@ -397,6 +285,7 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
         refresh_views()
 
     def new_random_bits():
+        """Yeni rastgele bit seti üretip simülasyonu yeniden çalıştır."""
         nonlocal current_bits, results, sweep_results
         current_bits = bits_generator()
 
