@@ -9,12 +9,9 @@
 #   dashboard_plots.py → Grafik çizim fonksiyonları
 #   dashboard.py       → Tkinter tabanlı gösterge paneli
 # =============================================================================
-
 from simulation import run_otfs_simulation, generate_bits, run_snr_sweep
 from dashboard import launch_otfs_dashboard
 
 
 if __name__ == "__main__":
-    # Simülasyon fonksiyonlarını dashboard'a enjekte ederek uygulamayı başlat.
     launch_otfs_dashboard(run_otfs_simulation, generate_bits, run_snr_sweep)
-

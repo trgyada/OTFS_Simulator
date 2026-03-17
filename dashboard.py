@@ -1,12 +1,5 @@
 # =============================================================================
-# dashboard.py — OTFS simülasyonu için Tkinter tabanlı interaktif gösterge paneli.
-#
-# Sekmeler:
-#   - Mathematical View : TX/RX verilerinin metin karşılaştırması
-#   - Visual View       : Grafik karşılaştırmaları + BER/SER eğrisi
-#
-# Grafik çizim mantığı dashboard_plots.py modülünde tutulur;
-# bu dosya yalnızca UI kurulumu ve olay yönetimini içerir.
+# dashboard.py — Tkinter dashboard
 # =============================================================================
 
 import tkinter as tk
@@ -21,17 +14,14 @@ import dashboard_plots as plots
 
 
 def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
-    # Ana pencereyi oluştur.
     root = tk.Tk()
     root.title("OTFS TX-RX Comparison Dashboard")
     root.geometry("1500x920")
 
-    # UI kontrollerinin bağlı olduğu değişkenler.
     channel_type_var = tk.StringVar(master=root, value="Ideal")
     snr_var = tk.StringVar(master=root, value="20")
     trials_var = tk.StringVar(master=root, value="50")
 
-    # İlk açılışta bir bit seti üretilir ve simülasyon sonucu hazırlanır.
     current_bits = bits_generator()
 
     results = simulation_func(
@@ -43,13 +33,11 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
     sweep_results = None
 
     def fmt(arr, precision=3):
-        # NumPy dizilerini okunabilir metin formatına çevir.
         if isinstance(arr, (float, int, np.floating, np.integer)):
             return str(arr)
         return np.array2string(np.array(arr), precision=precision, suppress_small=False)
 
     def build_comparison_text(res):
-        """Sol listede seçilebilecek metin karşılaştırma bloklarını oluştur."""
         sym_tx = plots.get_symbol_array(res)
         return {
             "Bits Comparison": (
@@ -90,7 +78,6 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
 
     comparison_text = build_comparison_text(results)
 
-    # Sekmeli ana layout.
     notebook = ttk.Notebook(root)
     notebook.pack(fill="both", expand=True)
 
@@ -118,7 +105,6 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
     text_area.pack(fill="both", expand=True)
 
     def update_text_view(event=None):
-        # Sol listede seçilen anahtarın metnini sağ alana yaz.
         sel = listbox.curselection()
         if not sel:
             return
@@ -147,7 +133,7 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
 
     channel_selector = ttk.Combobox(
         top_bar,
-        values=["Ideal", "AWGN"],
+        values=["Ideal", "AWGN", "Multipath"],
         state="readonly",
         width=10,
         textvariable=channel_type_var
@@ -155,12 +141,10 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
     channel_selector.pack(side="left", padx=5)
 
     ttk.Label(top_bar, text="SNR (dB):", font=("Arial", 11, "bold")).pack(side="left", padx=5)
-
     snr_entry = ttk.Entry(top_bar, width=8, textvariable=snr_var)
     snr_entry.pack(side="left", padx=5)
 
     ttk.Label(top_bar, text="Sweep Trials:", font=("Arial", 11, "bold")).pack(side="left", padx=5)
-
     trials_entry = ttk.Entry(top_bar, width=8, textvariable=trials_var)
     trials_entry.pack(side="left", padx=5)
 
@@ -205,7 +189,6 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
     canvas.get_tk_widget().pack(fill="both", expand=True)
 
     def draw_selected_plot(event=None):
-        # Her seçimde figürü sıfırdan çizerek eski kalıntıları temizle.
         fig.clear()
         selected = plot_selector.get()
 
@@ -238,17 +221,13 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
         canvas.draw()
 
     def refresh_views():
-        """Metin görünümü ve grafikleri mevcut sonuçlara göre yenile."""
         nonlocal comparison_text
         comparison_text = build_comparison_text(results)
-        metrics_label.config(
-            text=f"BER = {results['ber']:.6f} | SER = {results['ser']:.6f}"
-        )
+        metrics_label.config(text=f"BER = {results['ber']:.6f} | SER = {results['ser']:.6f}")
         update_text_view()
         draw_selected_plot()
 
     def run_action():
-        """Run düğmesine basıldığında simülasyonu (ve gerekirse SNR sweep'i) çalıştır."""
         nonlocal results, sweep_results
 
         try:
@@ -257,17 +236,15 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
             snr_var.set("20")
             snr_db = 20.0
 
-        # Her zaman önce tek çerçeve simülasyonu çalıştır.
+        # Her zaman tek koşu hesaplanır
         results = simulation_func(
             bits=current_bits,
             channel_type=channel_type_var.get(),
             snr_db=snr_db
         )
 
-        selected = plot_selector.get()
-
-        # BER/SER vs SNR ekranındaysa ek olarak SNR sweep de çalıştır.
-        if selected == "BER/SER vs SNR":
+        # Sweep görünümündeyse ayrıca sweep hesaplanır
+        if plot_selector.get() == "BER/SER vs SNR":
             try:
                 trials = int(trials_var.get())
             except ValueError:
@@ -285,7 +262,6 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
         refresh_views()
 
     def new_random_bits():
-        """Yeni rastgele bit seti üretip simülasyonu yeniden çalıştır."""
         nonlocal current_bits, results, sweep_results
         current_bits = bits_generator()
 
