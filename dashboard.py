@@ -299,10 +299,40 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
         elif selected == "CP Block Comparison":
             im1 = ax1.imshow(np.real(results["blocks_with_cp"]), aspect="auto", cmap="coolwarm")
             ax1.set_title("TX Real(blocks_with_cp)")
+            ax1.set_xlabel("Block Index")
+            ax1.set_ylabel("Sample Index")
+            ax1.axhline(y=0.5, color="black", linestyle="--", linewidth=1.5)
+            ax1.text(
+                -0.35, 0, "CP",
+                color="black", fontsize=11, fontweight="bold",
+                va="center", ha="right",
+                bbox=dict(facecolor="white", alpha=0.8, edgecolor="none")
+            )
+            ax1.text(
+                -0.35, 1.5, "Data",
+                color="black", fontsize=11, fontweight="bold",
+                va="center", ha="right",
+                bbox=dict(facecolor="white", alpha=0.8, edgecolor="none")
+            )
             fig.colorbar(im1, ax=ax1)
 
             im2 = ax2.imshow(np.real(results["rx_blocks_with_cp"]), aspect="auto", cmap="coolwarm")
             ax2.set_title("RX Real(rx_blocks_with_cp)")
+            ax2.set_xlabel("Block Index")
+            ax2.set_ylabel("Sample Index")
+            ax2.axhline(y=0.5, color="black", linestyle="--", linewidth=1.5)
+            ax2.text(
+                -0.35, 0, "CP",
+                color="black", fontsize=11, fontweight="bold",
+                va="center", ha="right",
+                bbox=dict(facecolor="white", alpha=0.8, edgecolor="none")
+            )
+            ax2.text(
+                -0.35, 1.5, "Data",
+                color="black", fontsize=11, fontweight="bold",
+                va="center", ha="right",
+                bbox=dict(facecolor="white", alpha=0.8, edgecolor="none")
+            )
             fig.colorbar(im2, ax=ax2)
 
         elif selected == "Signal Comparison":
@@ -322,36 +352,16 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
         canvas.draw()
 
     def refresh_views():
-        # Simulasyon sonucunu hem metin hem grafik sekmesine yansit.
         nonlocal comparison_text
         comparison_text = build_comparison_text(results)
-        metrics_label.config(text=f"BER = {results['ber']:.6f} | SER = {results['ser']:.6f}")
+        metrics_label.config(
+            text=f"BER = {results['ber']:.6f} | SER = {results['ser']:.6f}"
+        )
         update_text_view()
         draw_selected_plot()
 
     def run_action():
-        # "Run" tusunun tum davranislari burada toplanir.
         nonlocal results, sweep_results
-
-        selected = plot_selector.get()
-
-        if selected == "BER/SER vs SNR":
-            try:
-                trials = int(trials_var.get())
-                if trials <= 0:
-                    raise ValueError
-            except ValueError:
-                trials_var.set("50")
-                trials = 50
-
-            # SNR sweep daha maliyetli oldugu icin sadece bu secimde calisir.
-            sweep_results = snr_sweep_func(
-                channel_type=channel_type_var.get(),
-                snr_db_list=list(range(0, 21, 2)),
-                trials_per_snr=trials
-            )
-            draw_selected_plot()
-            return
 
         try:
             snr_db = float(snr_var.get())
@@ -359,18 +369,34 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
             snr_var.set("20")
             snr_db = 20.0
 
-        # Tek bir bit seti ile secilen kanal/SNR altinda yeniden kos.
+        # Her zaman önce tek koşu çalışsın
         results = simulation_func(
             bits=current_bits,
             channel_type=channel_type_var.get(),
             snr_db=snr_db
         )
 
-        sweep_results = None
+        selected = plot_selector.get()
+
+        # Eğer sweep ekranındaysan ek olarak sweep de çalıştır
+        if selected == "BER/SER vs SNR":
+            try:
+                trials = int(trials_var.get())
+            except ValueError:
+                trials_var.set("50")
+                trials = 50
+
+            sweep_results = snr_sweep_func(
+                channel_type=channel_type_var.get(),
+                snr_db_list=list(range(0, 21, 2)),
+                trials_per_snr=trials
+            )
+        else:
+            sweep_results = None
+
         refresh_views()
 
     def new_random_bits():
-        # "New Random Bits" sadece veri setini degistirir, ayarlar korunur.
         nonlocal current_bits, results, sweep_results
         current_bits = bits_generator()
 
