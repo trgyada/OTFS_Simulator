@@ -1,5 +1,5 @@
 # =============================================================================
-# dashboard.py — Tkinter dashboard
+# dashboard.py - Tkinter dashboard
 # =============================================================================
 
 import tkinter as tk
@@ -21,15 +21,18 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
     channel_type_var = tk.StringVar(master=root, value="Ideal")
     snr_var = tk.StringVar(master=root, value="20")
     trials_var = tk.StringVar(master=root, value="50")
+    equalization_enabled_var = tk.BooleanVar(master=root, value=False)
+    equalizer_type_var = tk.StringVar(master=root, value="ZF")
 
     current_bits = bits_generator()
 
     results = simulation_func(
         bits=current_bits,
         channel_type=channel_type_var.get(),
-        snr_db=float(snr_var.get())
+        snr_db=float(snr_var.get()),
+        equalization_enabled=equalization_enabled_var.get(),
+        equalizer_type=equalizer_type_var.get(),
     )
-
     sweep_results = None
 
     def fmt(arr, precision=3):
@@ -37,40 +40,53 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
             return str(arr)
         return np.array2string(np.array(arr), precision=precision, suppress_small=False)
 
+    def eq_status_text(res):
+        if res.get("equalization_enabled"):
+            return f"ON ({res.get('equalizer_type', 'ZF')})"
+        return "OFF"
+
     def build_comparison_text(res):
         sym_tx = plots.get_symbol_array(res)
         return {
             "Bits Comparison": (
-                "TX Bits\n" + "=" * 50 + "\n" + fmt(res["bits"]) +
-                "\n\nRX Bits\n" + "=" * 50 + "\n" + fmt(res["rx_bits"])
+                "TX Bits\n" + "=" * 50 + "\n" + fmt(res["bits"])
+                + "\n\nRX Bits\n" + "=" * 50 + "\n" + fmt(res["rx_bits"])
             ),
             "Symbols Comparison": (
-                "TX Symbols\n" + "=" * 50 + "\n" + fmt(sym_tx) +
-                "\n\nRX Symbols\n" + "=" * 50 + "\n" + fmt(res["rx_symbols"])
+                "TX Symbols\n" + "=" * 50 + "\n" + fmt(sym_tx)
+                + "\n\nRX Symbols\n" + "=" * 50 + "\n" + fmt(res["rx_symbols"])
             ),
             "DD Grid Comparison": (
-                "TX DD Grid\n" + "=" * 50 + "\n" + fmt(res["dd_grid"]) +
-                "\n\nRX Y_dd\n" + "=" * 50 + "\n" + fmt(res["Y_dd"])
+                "TX DD Grid\n" + "=" * 50 + "\n" + fmt(res["dd_grid"])
+                + "\n\nRX Y_dd\n" + "=" * 50 + "\n" + fmt(res["Y_dd"])
             ),
             "TF Grid Comparison": (
-                "TX X_tf\n" + "=" * 50 + "\n" + fmt(res["X_tf"]) +
-                "\n\nRX Y_tf\n" + "=" * 50 + "\n" + fmt(res["Y_tf"])
+                "TX X_tf\n" + "=" * 50 + "\n" + fmt(res["X_tf"])
+                + "\n\nRX Y_tf (after EQ if enabled)\n" + "=" * 50 + "\n" + fmt(res["Y_tf"])
             ),
             "Block Comparison": (
-                "TX x_time_blocks\n" + "=" * 50 + "\n" + fmt(res["x_time_blocks"]) +
-                "\n\nRX rx_blocks\n" + "=" * 50 + "\n" + fmt(res["rx_blocks"])
+                "TX x_time_blocks\n" + "=" * 50 + "\n" + fmt(res["x_time_blocks"])
+                + "\n\nRX rx_blocks\n" + "=" * 50 + "\n" + fmt(res["rx_blocks"])
             ),
             "CP Block Comparison": (
-                "TX blocks_with_cp\n" + "=" * 50 + "\n" + fmt(res["blocks_with_cp"]) +
-                "\n\nRX rx_blocks_with_cp\n" + "=" * 50 + "\n" + fmt(res["rx_blocks_with_cp"])
+                "TX blocks_with_cp\n" + "=" * 50 + "\n" + fmt(res["blocks_with_cp"])
+                + "\n\nRX rx_blocks_with_cp\n" + "=" * 50 + "\n" + fmt(res["rx_blocks_with_cp"])
             ),
             "Signal Comparison": (
-                "TX tx_signal\n" + "=" * 50 + "\n" + fmt(res["tx_signal"]) +
-                "\n\nRX rx_signal\n" + "=" * 50 + "\n" + fmt(res["rx_signal"])
+                "TX tx_signal\n" + "=" * 50 + "\n" + fmt(res["tx_signal"])
+                + "\n\nRX rx_signal\n" + "=" * 50 + "\n" + fmt(res["rx_signal"])
+            ),
+            "Equalization Analysis": (
+                f"Equalization = {eq_status_text(res)}\n"
+                + "Noise Power\n" + "=" * 50 + "\n" + fmt(res.get("noise_power", "N/A"))
+                + "\n\nChannel Impulse Response h[n]\n" + "=" * 50 + "\n" + fmt(res.get("channel_impulse_response", "N/A"))
+                + "\n\nChannel Response H[k]\n" + "=" * 50 + "\n" + fmt(res.get("channel_response", "N/A"))
+                + "\n\nEqualizer Weights W[k]\n" + "=" * 50 + "\n" + fmt(res.get("equalizer_weights", "N/A"))
             ),
             "Metrics": (
                 f"Channel Type = {res['channel_type']}\n"
                 f"SNR (dB) = {res['snr_db']}\n"
+                f"Equalization = {eq_status_text(res)}\n"
                 f"BER = {res['ber']}\n"
                 f"SER = {res['ser']}"
             ),
@@ -95,7 +111,7 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
 
     ttk.Label(left_frame, text="Select Comparison", font=("Arial", 12, "bold")).pack(pady=5)
 
-    listbox = tk.Listbox(left_frame, font=("Consolas", 10), height=20)
+    listbox = tk.Listbox(left_frame, font=("Consolas", 10), height=20, exportselection=False)
     listbox.pack(fill="y", expand=False)
 
     for key in comparison_text.keys():
@@ -107,7 +123,12 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
     def update_text_view(event=None):
         sel = listbox.curselection()
         if not sel:
-            return
+            if listbox.size() == 0:
+                return
+            listbox.selection_clear(0, tk.END)
+            listbox.selection_set(0)
+            listbox.activate(0)
+            sel = (0,)
         key = listbox.get(sel[0])
         text_area.config(state="normal")
         text_area.delete("1.0", tk.END)
@@ -130,13 +151,12 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
     top_bar.pack(fill="x", padx=10, pady=10)
 
     ttk.Label(top_bar, text="Channel:", font=("Arial", 11, "bold")).pack(side="left", padx=5)
-
     channel_selector = ttk.Combobox(
         top_bar,
         values=["Ideal", "AWGN", "Multipath"],
         state="readonly",
         width=10,
-        textvariable=channel_type_var
+        textvariable=channel_type_var,
     )
     channel_selector.pack(side="left", padx=5)
 
@@ -148,8 +168,20 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
     trials_entry = ttk.Entry(top_bar, width=8, textvariable=trials_var)
     trials_entry.pack(side="left", padx=5)
 
-    ttk.Label(top_bar, text="Select Comparison:", font=("Arial", 12, "bold")).pack(side="left", padx=15)
+    eq_toggle = ttk.Checkbutton(top_bar, text="Equalization", variable=equalization_enabled_var)
+    eq_toggle.pack(side="left", padx=10)
 
+    ttk.Label(top_bar, text="EQ Type:", font=("Arial", 11, "bold")).pack(side="left", padx=5)
+    equalizer_selector = ttk.Combobox(
+        top_bar,
+        values=["ZF", "MMSE"],
+        state="readonly",
+        width=8,
+        textvariable=equalizer_type_var,
+    )
+    equalizer_selector.pack(side="left", padx=5)
+
+    ttk.Label(top_bar, text="Select Comparison:", font=("Arial", 12, "bold")).pack(side="left", padx=15)
     plot_selector = ttk.Combobox(
         top_bar,
         values=[
@@ -170,8 +202,8 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
 
     metrics_label = ttk.Label(
         top_bar,
-        text=f"BER = {results['ber']:.6f} | SER = {results['ser']:.6f}",
-        font=("Arial", 11, "bold")
+        text=f"BER = {results['ber']:.6f} | SER = {results['ser']:.6f} | EQ = {eq_status_text(results)}",
+        font=("Arial", 11, "bold"),
     )
     metrics_label.pack(side="right", padx=10)
 
@@ -187,6 +219,13 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
     fig = plt.Figure(figsize=(12, 6), dpi=100)
     canvas = FigureCanvasTkAgg(fig, master=plot_frame)
     canvas.get_tk_widget().pack(fill="both", expand=True)
+
+    def update_equalizer_state():
+        new_state = "readonly" if equalization_enabled_var.get() else "disabled"
+        equalizer_selector.config(state=new_state)
+
+    eq_toggle.config(command=update_equalizer_state)
+    update_equalizer_state()
 
     def draw_selected_plot(event=None):
         fig.clear()
@@ -223,7 +262,9 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
     def refresh_views():
         nonlocal comparison_text
         comparison_text = build_comparison_text(results)
-        metrics_label.config(text=f"BER = {results['ber']:.6f} | SER = {results['ser']:.6f}")
+        metrics_label.config(
+            text=f"BER = {results['ber']:.6f} | SER = {results['ser']:.6f} | EQ = {eq_status_text(results)}"
+        )
         update_text_view()
         draw_selected_plot()
 
@@ -236,17 +277,22 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
             snr_var.set("20")
             snr_db = 20.0
 
-        # Her zaman tek koşu hesaplanır
+        eq_enabled = bool(equalization_enabled_var.get())
+        eq_type = equalizer_type_var.get()
+
         results = simulation_func(
             bits=current_bits,
             channel_type=channel_type_var.get(),
-            snr_db=snr_db
+            snr_db=snr_db,
+            equalization_enabled=eq_enabled,
+            equalizer_type=eq_type,
         )
 
-        # Sweep görünümündeyse ayrıca sweep hesaplanır
         if plot_selector.get() == "BER/SER vs SNR":
             try:
                 trials = int(trials_var.get())
+                if trials <= 0:
+                    raise ValueError
             except ValueError:
                 trials_var.set("50")
                 trials = 50
@@ -254,7 +300,9 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
             sweep_results = snr_sweep_func(
                 channel_type=channel_type_var.get(),
                 snr_db_list=list(range(0, 21, 2)),
-                trials_per_snr=trials
+                trials_per_snr=trials,
+                equalization_enabled=eq_enabled,
+                equalizer_type=eq_type,
             )
         else:
             sweep_results = None
@@ -271,10 +319,15 @@ def launch_otfs_dashboard(simulation_func, bits_generator, snr_sweep_func):
             snr_var.set("20")
             snr_db = 20.0
 
+        eq_enabled = bool(equalization_enabled_var.get())
+        eq_type = equalizer_type_var.get()
+
         results = simulation_func(
             bits=current_bits,
             channel_type=channel_type_var.get(),
-            snr_db=snr_db
+            snr_db=snr_db,
+            equalization_enabled=eq_enabled,
+            equalizer_type=eq_type,
         )
 
         sweep_results = None
